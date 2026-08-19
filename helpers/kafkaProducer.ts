@@ -1,5 +1,6 @@
 import { Kafka, type Producer } from "kafkajs";
 import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
+import type { SwapEvent } from "../models/TradeEvent.js";
 import { logger } from "./logger.js";
 
 let producer: Producer | null = null;
@@ -30,7 +31,10 @@ export async function connectKafkaProducer(): Promise<void> {
     producer = getKafka().producer();
     await producer.connect();
     connected = true;
-    logger.info("Kafka producer connected", { brokers: kafkaConfig.brokers });
+    logger.info("Kafka producer connected", {
+      brokers: kafkaConfig.brokers,
+      topic: kafkaConfig.topic,
+    });
   } catch (error) {
     producer = null;
     connected = false;
@@ -50,9 +54,9 @@ export async function disconnectKafkaProducer(): Promise<void> {
   }
 }
 
-export async function publishTradeEvent(
+export async function publishSwapEvent(
   key: string,
-  message: object
+  message: SwapEvent
 ): Promise<void> {
   if (!isKafkaConfigured || !producer || !connected || !kafkaConfig) {
     return;
@@ -69,11 +73,6 @@ export async function publishTradeEvent(
   });
 }
 
-/** @deprecated use publishTradeEvent */
-export const publishSwapEvent = publishTradeEvent;
-
 export function isKafkaConnected(): boolean {
   return connected;
 }
-
-export { kafkaConfig, isKafkaConfigured };

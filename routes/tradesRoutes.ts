@@ -3,12 +3,14 @@ import { getTradesPage } from "../controllers/tradeController.js";
 import { attachTradeStream } from "../helpers/tradeBroadcaster.js";
 import { logger } from "../helpers/logger.js";
 
+const MAX_OFFSET = 10_000;
+
 function parseLimit(value: unknown, fallback = 50): number {
   return Math.min(Math.max(parseInt(String(value ?? fallback), 10) || fallback, 1), 200);
 }
 
 function parseOffset(value: unknown): number {
-  return Math.max(parseInt(String(value ?? "0"), 10) || 0, 0);
+  return Math.min(Math.max(parseInt(String(value ?? "0"), 10) || 0, 0), MAX_OFFSET);
 }
 
 export function createTradesRoutes(): Router {
@@ -33,9 +35,12 @@ export function createTradesRoutes(): Router {
   });
 
   router.get("/trades/stream", (req: Request, res: Response) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-
     const cleanup = attachTradeStream(res);
+
+    if (!cleanup) {
+      res.status(503).json({ error: "Too many stream connections" });
+      return;
+    }
 
     req.on("close", () => {
       cleanup();

@@ -15,9 +15,11 @@ const envSchema = z
     SUPABASE_KEY: z.string().min(1).optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     KAFKA_BROKERS: z.string().optional(),
-    KAFKA_TOPIC: z.string().min(1).default("base.uniswap.v4.swaps"),
     KAFKA_CLIENT_ID: z.string().min(1).default("transaction-tracker"),
+    HOST: z.string().min(1).default("127.0.0.1"),
     PORT: z.coerce.number().int().positive().default(3000),
+    CORS_ORIGIN: z.string().min(1).default("*"),
+    API_KEY: z.string().optional(),
   })
   .transform((data) => {
     const supabaseSecretKey =
@@ -35,11 +37,14 @@ const envSchema = z
       ? data.KAFKA_BROKERS.split(",").map((b) => b.trim()).filter(Boolean)
       : [];
 
+    const apiKey = data.API_KEY?.trim() || undefined;
+
     return {
       ...data,
       supabaseSecretKey,
       kafkaEnabled: kafkaBrokers.length > 0,
       kafkaBrokers,
+      apiKey,
     };
   });
 

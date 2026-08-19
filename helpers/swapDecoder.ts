@@ -2,7 +2,6 @@ import {
   decodeEventLog,
   getEventSelector,
   parseAbiItem,
-  type Hash,
   type Log,
   type TransactionReceipt,
 } from "viem";
@@ -17,7 +16,8 @@ const swapEventTopic = getEventSelector(swapEvent);
 
 export function decodeSwapLogs(
   receipt: TransactionReceipt,
-  trader: string
+  trader: string,
+  blockTimestamp: bigint
 ): SwapTrade[] {
   const poolManager = alchemyConfig.poolManager.toLowerCase();
   const trades: SwapTrade[] = [];
@@ -34,10 +34,24 @@ export function decodeSwapLogs(
         topics: log.topics,
       });
 
+      if (decoded.eventName !== "Swap") {
+        continue;
+      }
+
+      const topic0 = log.topics[0];
+      if (!topic0) {
+        continue;
+      }
+
       trades.push({
+        chainId: alchemyConfig.chainId,
+        contractAddress: log.address,
+        eventName: "Swap",
+        topic0,
         txHash: receipt.transactionHash,
         logIndex: Number(log.logIndex),
         blockNumber: receipt.blockNumber,
+        blockTimestamp,
         trader,
         poolId: decoded.args.id,
         sender: decoded.args.sender,
@@ -62,5 +76,3 @@ function isPoolManagerSwapLog(log: Log, poolManager: string): boolean {
     log.topics[0]?.toLowerCase() === swapEventTopic.toLowerCase()
   );
 }
-
-export type { Hash };

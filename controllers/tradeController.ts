@@ -1,49 +1,27 @@
 import type { SwapTrade } from "../models/SwapTrade.js";
-import {
-  fromSupabaseRow,
-  toSupabaseRow,
-} from "../models/SwapTrade.js";
-import {
-  toExecuteEvent,
-  toSwapEvent,
-  serializeSwapForApi,
-  type ExecuteEvent,
-} from "../models/TradeEvent.js";
-import { publishTradeEvent } from "../helpers/kafkaProducer.js";
-import { countSwaps, getSwaps, upsertSwap } from "../helpers/supabaseClient.js";
+import { fromSupabaseRow, toSupabaseRow } from "../models/SwapTrade.js";
+import { toSwapEvent, type SwapEvent } from "../models/TradeEvent.js";
+import { publishSwapEvent } from "../helpers/kafkaProducer.js";
+import { countSwaps, getSwaps, upsertSwaps } from "../helpers/supabaseClient.js";
 import { broadcastTradeEvent } from "../helpers/tradeBroadcaster.js";
 import { logger } from "../helpers/logger.js";
 
-export async function processExecute(event: ExecuteEvent): Promise<void> {
-  try {
-    await publishTradeEvent(event.txHash, event);
-    broadcastTradeEvent(event);
+const SWAP_BATCH_SIZE = 10;
 
-    logger.info("Execute event published", {
-      txHash: event.txHash,
-      blockNumber: event.blockNumber,
-    });
-  } catch (error) {
-    logger.error("Failed to process execute event", {
-      txHash: event.txHash,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
+let pendingSwaps: SwapTrade[] = [];
 
 export async function processSwap(trade: SwapTrade): Promise<void> {
   try {
-    await upsertSwap(toSupabaseRow(trade));
-
     const event = toSwapEvent(trade);
-    await publishTradeEvent(`${trade.txHash}-${trade.logIndex}`, event);
+
+    await publishSwapEvent(`${trade.txHash}-${trade.logIndex}`, event);
     broadcastTradeEvent(event);
 
-    logger.info("Swap event published", {
-      txHash: trade.txHash,
-      logIndex: trade.logIndex,
-      poolId: trade.poolId,
-    });
+    pendingSwaps.push(trade);
+
+    if (pendingSwaps.length >= SWAP_BATCH_SIZE) {
+      await flushPendingSwaps();
+    }
   } catch (error) {
     logger.error("Failed to process swap", {
       txHash: trade.txHash,
@@ -53,11 +31,28 @@ export async function processSwap(trade: SwapTrade): Promise<void> {
   }
 }
 
+export async function flushPendingSwaps(): Promise<void> {
+  if (pendingSwaps.length === 0) {
+    return;
+  }
+
+  const batch = pendingSwaps;
+  pendingSwaps = [];
+
+  try {
+    await upsertSwaps(batch.map(toSupabaseRow));
+    logger.info("Wrote swap batch to Supabase", { count: batch.length });
+  } catch (error) {
+    pendingSwaps = batch.concat(pendingSwaps);
+    throw error;
+  }
+}
+
 export async function getTradesPage(
   limit: number,
   offset: number
 ): Promise<{
-  trades: ReturnType<typeof serializeSwapForApi>[];
+  trades: SwapEvent[];
   total: number;
   limit: number;
   offset: number;
@@ -68,11 +63,9 @@ export async function getTradesPage(
   ]);
 
   return {
-    trades: rows.map(fromSupabaseRow).map(serializeSwapForApi),
+    trades: rows.map(fromSupabaseRow).map(toSwapEvent),
     total,
     limit,
     offset,
   };
 }
-
-export { toExecuteEvent };

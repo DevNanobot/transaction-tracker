@@ -1,24 +1,29 @@
 import type { Response } from "express";
-import type { TradeEvent } from "../models/TradeEvent.js";
+import type { SwapEvent } from "../models/TradeEvent.js";
 
-type Subscriber = (event: TradeEvent) => void;
+type Subscriber = (event: SwapEvent) => void;
 
+const MAX_SUBSCRIBERS = 32;
 const subscribers = new Set<Subscriber>();
 
-export function broadcastTradeEvent(event: TradeEvent): void {
+export function broadcastTradeEvent(event: SwapEvent): void {
   for (const subscriber of subscribers) {
     subscriber(event);
   }
 }
 
-export function subscribeToTradeEvents(subscriber: Subscriber): () => void {
+function subscribeToTradeEvents(subscriber: Subscriber): () => void {
   subscribers.add(subscriber);
   return () => {
     subscribers.delete(subscriber);
   };
 }
 
-export function attachTradeStream(res: Response): () => void {
+export function attachTradeStream(res: Response): (() => void) | null {
+  if (subscribers.size >= MAX_SUBSCRIBERS) {
+    return null;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -26,7 +31,7 @@ export function attachTradeStream(res: Response): () => void {
 
   res.write(": connected\n\n");
 
-  const send = (event: TradeEvent) => {
+  const send = (event: SwapEvent) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
 

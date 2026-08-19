@@ -5,25 +5,21 @@ import {
   connectKafkaProducer,
   disconnectKafkaProducer,
 } from "./helpers/kafkaProducer.js";
+import {
+  apiKeyMiddleware,
+  corsMiddleware,
+  rateLimitMiddleware,
+} from "./helpers/httpSecurity.js";
 import { createRoutes } from "./routes/index.js";
 import { logger } from "./helpers/logger.js";
+import { flushPendingSwaps } from "./controllers/tradeController.js";
 
 const app = express();
 
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") {
-    res.sendStatus(204);
-    return;
-  }
-
-  next();
-});
-
-app.use(express.json());
+app.use(corsMiddleware);
+app.use(rateLimitMiddleware);
+app.use(apiKeyMiddleware);
+app.use(express.json({ limit: "16kb" }));
 
 let alchemyWs: AlchemyWebSocket;
 let server: ReturnType<typeof app.listen>;
@@ -36,8 +32,13 @@ async function bootstrap(): Promise<void> {
 
   app.use(createRoutes(alchemyWs));
 
-  server = app.listen(env.PORT, () => {
-    logger.info("Server started", { port: env.PORT });
+  server = app.listen(env.PORT, env.HOST, () => {
+    logger.info("Server started", {
+      host: env.HOST,
+      port: env.PORT,
+      corsOrigin: env.CORS_ORIGIN,
+      apiKeyRequired: Boolean(env.apiKey),
+    });
   });
 
   setupGracefulShutdown();
@@ -48,6 +49,15 @@ function setupGracefulShutdown(): void {
     logger.info("Shutting down", { signal });
 
     await alchemyWs.stop();
+
+    try {
+      await flushPendingSwaps();
+    } catch (error) {
+      logger.error("Failed to flush pending swaps", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     await disconnectKafkaProducer();
 
     if (server) {

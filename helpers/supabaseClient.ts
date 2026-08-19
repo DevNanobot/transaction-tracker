@@ -17,10 +17,14 @@ export function getSupabaseClient(): SupabaseClient {
   return client;
 }
 
-export async function upsertSwap(row: SupabaseSwapRow): Promise<void> {
+export async function upsertSwaps(rows: SupabaseSwapRow[]): Promise<void> {
+  if (rows.length === 0) {
+    return;
+  }
+
   const supabase = getSupabaseClient();
 
-  const { error } = await supabase.from("swaps").upsert(row, {
+  const { error } = await supabase.from("swaps").upsert(rows, {
     onConflict: "tx_hash,log_index",
     ignoreDuplicates: false,
   });
@@ -62,11 +66,6 @@ export async function countSwaps(): Promise<number> {
   }
 
   return count ?? 0;
-}
-
-/** @deprecated use getSwaps */
-export async function getRecentSwaps(limit: number): Promise<SupabaseSwapRow[]> {
-  return getSwaps(limit, 0);
 }
 
 export async function pingSupabase(): Promise<boolean> {

@@ -1,21 +1,15 @@
 import type { SwapTrade } from "./SwapTrade.js";
-import { toKafkaMessage as toSwapKafkaMessage } from "./SwapTrade.js";
-
-export interface ExecuteEvent {
-  type: "execute";
-  txHash: string;
-  from: string;
-  to: string;
-  blockNumber: string;
-  inputLength: number;
-  timestamp: string;
-}
 
 export interface SwapEvent {
   type: "swap";
+  chainId: number;
+  contractAddress: string;
+  eventName: "Swap";
+  topic0: string;
   txHash: string;
   logIndex: number;
   blockNumber: string;
+  blockTimestamp: string;
   trader: string;
   poolId: string;
   sender: string;
@@ -28,46 +22,28 @@ export interface SwapEvent {
   timestamp: string;
 }
 
-export type TradeEvent = ExecuteEvent | SwapEvent;
-
-export function toExecuteEvent(input: {
-  txHash: string;
-  from: string;
-  to: string;
-  blockNumber: bigint;
-  inputLength: number;
-}): ExecuteEvent {
-  return {
-    type: "execute",
-    txHash: input.txHash,
-    from: input.from,
-    to: input.to,
-    blockNumber: input.blockNumber.toString(),
-    inputLength: input.inputLength,
-    timestamp: new Date().toISOString(),
-  };
-}
-
 export function toSwapEvent(trade: SwapTrade): SwapEvent {
-  const message = toSwapKafkaMessage(trade);
+  const blockTimestamp = new Date(Number(trade.blockTimestamp) * 1000).toISOString();
+
   return {
     type: "swap",
-    txHash: message.txHash as string,
-    logIndex: message.logIndex as number,
-    blockNumber: message.blockNumber as string,
-    trader: message.trader as string,
-    poolId: message.poolId as string,
-    sender: message.sender as string,
-    amount0: message.amount0 as string,
-    amount1: message.amount1 as string,
-    sqrtPriceX96: message.sqrtPriceX96 as string,
-    liquidity: message.liquidity as string,
-    tick: message.tick as number,
-    fee: message.fee as number,
-    timestamp: message.timestamp as string,
+    chainId: trade.chainId,
+    contractAddress: trade.contractAddress,
+    eventName: trade.eventName,
+    topic0: trade.topic0,
+    txHash: trade.txHash,
+    logIndex: trade.logIndex,
+    blockNumber: trade.blockNumber.toString(),
+    blockTimestamp,
+    trader: trade.trader,
+    poolId: trade.poolId,
+    sender: trade.sender,
+    amount0: trade.amount0,
+    amount1: trade.amount1,
+    sqrtPriceX96: trade.sqrtPriceX96,
+    liquidity: trade.liquidity,
+    tick: trade.tick,
+    fee: trade.fee,
+    timestamp: new Date().toISOString(),
   };
-}
-
-export function serializeSwapForApi(trade: SwapTrade): SwapEvent {
-  return toSwapEvent(trade);
 }

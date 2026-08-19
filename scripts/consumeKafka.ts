@@ -1,8 +1,5 @@
-import dotenv from "dotenv";
 import { Kafka } from "kafkajs";
 import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
-
-dotenv.config();
 
 async function consume(): Promise<void> {
   if (!isKafkaConfigured || !kafkaConfig) {
@@ -18,6 +15,18 @@ async function consume(): Promise<void> {
   const consumer = kafka.consumer({
     groupId: `${kafkaConfig.clientId}-cli`,
   });
+
+  const shutdown = async (signal: string) => {
+    console.log(`\nShutting down (${signal})`);
+    try {
+      await consumer.disconnect();
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
   await consumer.connect();
   await consumer.subscribe({

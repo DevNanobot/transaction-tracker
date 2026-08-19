@@ -1,8 +1,5 @@
 import { Kafka } from "kafkajs";
-import dotenv from "dotenv";
 import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
-
-dotenv.config();
 
 async function createTopic(): Promise<void> {
   if (!isKafkaConfigured || !kafkaConfig) {

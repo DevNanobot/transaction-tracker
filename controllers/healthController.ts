@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
+import { isKafkaConfigured } from "../config/kafka.js";
 import { pingSupabase } from "../helpers/supabaseClient.js";
-import { isKafkaConfigured, isKafkaConnected } from "../helpers/kafkaProducer.js";
+import { isKafkaConnected } from "../helpers/kafkaProducer.js";
 import type { AlchemyWebSocket } from "../helpers/alchemyWebSocket.js";
 
 export function createHealthController(alchemyWs: AlchemyWebSocket) {
