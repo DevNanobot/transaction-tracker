@@ -1,6 +1,10 @@
 import { Kafka, type Producer } from "kafkajs";
 import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
-import type { SwapEvent } from "../models/TradeEvent.js";
+import {
+  toAcceleratedSwapEvents,
+  type SwapAcceleratedEvent,
+  type SwapEvent,
+} from "../models/TradeEvent.js";
 import { logger } from "./logger.js";
 
 let producer: Producer | null = null;
@@ -34,6 +38,7 @@ export async function connectKafkaProducer(): Promise<void> {
     logger.info("Kafka producer connected", {
       brokers: kafkaConfig.brokers,
       topic: kafkaConfig.topic,
+      acceleratedTopic: kafkaConfig.acceleratedTopic,
     });
   } catch (error) {
     producer = null;
@@ -71,6 +76,29 @@ export async function publishSwapEvent(
       },
     ],
   });
+}
+
+export async function publishAcceleratedSwapEvents(
+  event: SwapEvent,
+  onEach?: (copy: SwapAcceleratedEvent) => void
+): Promise<void> {
+  const copies = toAcceleratedSwapEvents(event);
+
+  for (const copy of copies) {
+    if (isKafkaConfigured && producer && connected && kafkaConfig) {
+      await producer.send({
+        topic: kafkaConfig.acceleratedTopic,
+        messages: [
+          {
+            key: `${copy.txHash}-${copy.logIndex}-${copy.nonce}`,
+            value: JSON.stringify(copy),
+          },
+        ],
+      });
+    }
+
+    onEach?.(copy);
+  }
 }
 
 export function isKafkaConnected(): boolean {

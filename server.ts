@@ -45,13 +45,19 @@ async function bootstrap(): Promise<void> {
 }
 
 function setupGracefulShutdown(): void {
+  let shuttingDown = false;
+
   const shutdown = async (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
     logger.info("Shutting down", { signal });
 
     await alchemyWs.stop();
 
     try {
-      await flushPendingSwaps();
+      await flushPendingSwaps({ reason: "shutdown" });
     } catch (error) {
       logger.error("Failed to flush pending swaps", {
         error: error instanceof Error ? error.message : String(error),
@@ -61,17 +67,17 @@ function setupGracefulShutdown(): void {
     await disconnectKafkaProducer();
 
     if (server) {
-      server.close(() => {
-        logger.info("HTTP server closed");
-        process.exit(0);
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
       });
-    } else {
-      process.exit(0);
+      logger.info("HTTP server closed");
     }
+
+    process.exit(0);
   };
 
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 bootstrap().catch((error) => {

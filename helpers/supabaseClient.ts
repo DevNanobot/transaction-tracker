@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseConfig } from "../config/supabase.js";
-import type { SupabaseSwapRow } from "../models/SwapTrade.js";
+import type { SupabaseAcceleratedSwapRow, SupabaseSwapRow } from "../models/SwapTrade.js";
 
 let client: SupabaseClient | null = null;
 
@@ -63,6 +63,60 @@ export async function countSwaps(): Promise<number> {
 
   if (error) {
     throw new Error(`Supabase count failed: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+export async function upsertAcceleratedSwaps(
+  rows: SupabaseAcceleratedSwapRow[]
+): Promise<void> {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase.from("swaps_accelerated").upsert(rows, {
+    onConflict: "tx_hash,log_index,nonce",
+    ignoreDuplicates: false,
+  });
+
+  if (error) {
+    throw new Error(`Supabase accelerated upsert failed: ${error.message}`);
+  }
+}
+
+export async function getAcceleratedSwaps(
+  limit: number,
+  offset: number
+): Promise<SupabaseAcceleratedSwapRow[]> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("swaps_accelerated")
+    .select("*")
+    .order("block_number", { ascending: false })
+    .order("log_index", { ascending: false })
+    .order("nonce", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw new Error(`Supabase accelerated query failed: ${error.message}`);
+  }
+
+  return (data ?? []) as SupabaseAcceleratedSwapRow[];
+}
+
+export async function countAcceleratedSwaps(): Promise<number> {
+  const supabase = getSupabaseClient();
+
+  const { count, error } = await supabase
+    .from("swaps_accelerated")
+    .select("*", { count: "exact", head: true });
+
+  if (error) {
+    throw new Error(`Supabase accelerated count failed: ${error.message}`);
   }
 
   return count ?? 0;

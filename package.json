@@ -11,8 +11,10 @@
     "create-topic": "tsx scripts/createKafkaTopic.ts",
     "kafka:up": "docker compose up -d --wait",
     "kafka:down": "docker compose down",
-    "kafka:logs": "docker compose logs -f kafka",
+    "kafka:logs": "docker compose logs -f kafka1 kafka2 kafka3",
     "kafka:setup": "docker compose up -d --wait && npm run create-topic",
+    "kafka:reset": "docker compose down -v",
+    "kafka:describe": "docker compose exec kafka1 kafka-topics --bootstrap-server localhost:9092 --describe --topic swap && docker compose exec kafka1 kafka-topics --bootstrap-server localhost:9092 --describe --topic swap-accelerated",
     "kafka:consume": "tsx scripts/consumeKafka.ts"
   },
   "keywords": ["uniswap", "base", "alchemy", "kafka", "supabase"],

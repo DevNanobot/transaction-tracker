@@ -1,3 +1,5 @@
+export const ACCELERATED_SWAP_COPIES = 10;
+
 export interface SwapTrade {
   chainId: number;
   contractAddress: string;
@@ -62,6 +64,22 @@ export function toSupabaseRow(trade: SwapTrade): SupabaseSwapRow {
     tick: trade.tick,
     fee: trade.fee,
   };
+}
+
+export interface SupabaseAcceleratedSwapRow extends SupabaseSwapRow {
+  nonce: number;
+}
+
+export function toAcceleratedSupabaseRows(
+  trade: SwapTrade
+): SupabaseAcceleratedSwapRow[] {
+  const base = toSupabaseRow(trade);
+
+  return Array.from({ length: ACCELERATED_SWAP_COPIES }, (_, index) => ({
+    ...base,
+    nonce: index + 1,
+    event_name: "swap-accelerated",
+  }));
 }
 
 export function fromSupabaseRow(

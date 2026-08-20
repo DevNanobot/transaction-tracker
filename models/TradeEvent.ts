@@ -1,4 +1,8 @@
-import type { SwapTrade } from "./SwapTrade.js";
+import {
+  ACCELERATED_SWAP_COPIES,
+  type SwapTrade,
+  type SupabaseAcceleratedSwapRow,
+} from "./SwapTrade.js";
 
 export interface SwapEvent {
   type: "swap";
@@ -45,5 +49,47 @@ export function toSwapEvent(trade: SwapTrade): SwapEvent {
     tick: trade.tick,
     fee: trade.fee,
     timestamp: new Date().toISOString(),
+  };
+}
+
+export interface SwapAcceleratedEvent extends Omit<SwapEvent, "type"> {
+  type: "swap-accelerated";
+  nonce: number;
+}
+
+export function toAcceleratedSwapEvents(event: SwapEvent): SwapAcceleratedEvent[] {
+  return Array.from({ length: ACCELERATED_SWAP_COPIES }, (_, index) => ({
+    ...event,
+    type: "swap-accelerated",
+    nonce: index + 1,
+    timestamp: event.timestamp,
+    blockTimestamp: event.blockTimestamp,
+  }));
+}
+
+export function fromAcceleratedSupabaseRow(
+  row: SupabaseAcceleratedSwapRow & { id?: string; created_at?: string }
+): SwapAcceleratedEvent {
+  return {
+    type: "swap-accelerated",
+    chainId: row.chain_id,
+    contractAddress: row.contract_address,
+    eventName: "Swap",
+    topic0: row.topic0,
+    txHash: row.tx_hash,
+    logIndex: row.log_index,
+    blockNumber: row.block_number,
+    blockTimestamp: row.block_timestamp,
+    trader: row.trader,
+    poolId: row.pool_id,
+    sender: row.sender,
+    amount0: row.amount0,
+    amount1: row.amount1,
+    sqrtPriceX96: row.sqrt_price_x96,
+    liquidity: row.liquidity,
+    tick: row.tick,
+    fee: row.fee,
+    timestamp: row.block_timestamp,
+    nonce: row.nonce,
   };
 }

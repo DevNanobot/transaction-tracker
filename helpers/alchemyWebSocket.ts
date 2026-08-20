@@ -1,6 +1,5 @@
 import { createPublicClient, webSocket, type Hash } from 'viem'
-import { base } from 'viem/chains'
-import { alchemyConfig } from '../config/alchemy.js'
+import { alchemyConfig, robinhoodChain } from '../config/alchemy.js'
 import { processSwap } from '../controllers/tradeController.js'
 import { isExecuteTransaction } from './executeFilter.js'
 import { decodeSwapLogs } from './swapDecoder.js'
@@ -8,18 +7,33 @@ import { logger } from './logger.js'
 
 export class AlchemyWebSocket {
   private readonly client = createPublicClient({
-    chain: base,
+    chain: robinhoodChain,
     transport: webSocket(alchemyConfig.wssUrl),
   })
 
   private unwatch: (() => void) | undefined
   private seenTxHashes = new Set<Hash>()
   private watching = false
+  private inflight = 0
+  private idleWaiters: Array<() => void> = []
 
   start(): void {
     this.unwatch = this.client.watchBlocks({
       onBlock: (block) => {
-        void this.handleBlock(block.number)
+        if (!this.watching) {
+          return
+        }
+
+        this.inflight += 1
+        void this.handleBlock(block.number).finally(() => {
+          this.inflight -= 1
+          if (this.inflight === 0) {
+            for (const resolve of this.idleWaiters) {
+              resolve()
+            }
+            this.idleWaiters = []
+          }
+        })
       },
       onError: (error) => {
         logger.error('Viem block subscription error', {
@@ -29,13 +43,27 @@ export class AlchemyWebSocket {
     })
 
     this.watching = true
-    logger.info('Subscribed to new blocks via viem')
+    logger.info('Subscribed to new blocks via viem', {
+      chainId: alchemyConfig.chainId,
+      universalRouter: alchemyConfig.universalRouter,
+      poolManager: alchemyConfig.poolManager,
+    })
   }
 
   async stop(): Promise<void> {
+    this.watching = false
     this.unwatch?.()
     this.unwatch = undefined
-    this.watching = false
+
+    if (this.inflight > 0) {
+      logger.info('Waiting for in-flight blocks before flush', {
+        inflight: this.inflight,
+      })
+      await new Promise<void>((resolve) => {
+        this.idleWaiters.push(resolve)
+      })
+    }
+
     logger.info('Stopped viem block subscription')
   }
 
@@ -93,6 +121,14 @@ export class AlchemyWebSocket {
       }
 
       const swaps = decodeSwapLogs(receipt, trader, blockTimestamp)
+
+      if (swaps.length === 0) {
+        logger.info('Router execute with no V4 Swap logs', {
+          txHash,
+          logCount: receipt.logs.length,
+        })
+        return
+      }
 
       for (const swap of swaps) {
         logger.info('Swap', {
