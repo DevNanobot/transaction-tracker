@@ -41,9 +41,7 @@ const envSchema = z
       data.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseSecretKey) {
-      throw new Error(
-        "Invalid environment configuration:\n  SUPABASE_SECRET_KEY: Required (or SUPABASE_KEY / legacy SUPABASE_SERVICE_ROLE_KEY)"
-      );
+      throw new Error("SUPABASE_SECRET_KEY is required");
     }
 
     const kafkaBrokers = data.KAFKA_BROKERS?.trim()

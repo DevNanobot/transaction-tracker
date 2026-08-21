@@ -1,5 +1,4 @@
-# Local development — single Confluent Kafka broker (KRaft, RF=1).
-# Production stack: docker compose -f docker-compose.prod.yml up -d --build
+# Local Kafka (KRaft, one broker on localhost:9092)
 
 services:
   kafka:

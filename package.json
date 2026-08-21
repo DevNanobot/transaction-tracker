@@ -1,7 +1,7 @@
 {
   "name": "transaction-tracker",
   "version": "1.0.0",
-  "description": "Track Uniswap V4 swaps on Base via Alchemy WebSocket",
+  "description": "Track Uniswap V4 swaps on Robinhood Chain",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

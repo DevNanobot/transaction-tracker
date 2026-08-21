@@ -3,7 +3,7 @@ import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
 
 async function consume(): Promise<void> {
   if (!isKafkaConfigured || !kafkaConfig) {
-    console.error("KAFKA_BROKERS is not set — nothing to do.");
+    console.error("KAFKA_BROKERS is not set");
     process.exit(1);
   }
 

@@ -1,7 +1,5 @@
-# Hetzner / VPS production — app + single Kafka broker on one machine.
-# Usage: docker compose -f docker-compose.prod.yml up -d --build
-#
-# Put secrets in .env (never commit). Bind ports to localhost; put Caddy/Nginx in front.
+# Production: app + Kafka on one host.
+# docker compose -f docker-compose.prod.yml up -d --build
 
 services:
   kafka:

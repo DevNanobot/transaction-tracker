@@ -66,22 +66,6 @@ export function toSupabaseRow(trade: SwapTrade): SupabaseSwapRow {
   };
 }
 
-export interface SupabaseAcceleratedSwapRow extends SupabaseSwapRow {
-  nonce: number;
-}
-
-export function toAcceleratedSupabaseRows(
-  trade: SwapTrade
-): SupabaseAcceleratedSwapRow[] {
-  const base = toSupabaseRow(trade);
-
-  return Array.from({ length: ACCELERATED_SWAP_COPIES }, (_, index) => ({
-    ...base,
-    nonce: index + 1,
-    event_name: "swap-accelerated",
-  }));
-}
-
 export function fromSupabaseRow(
   row: SupabaseSwapRow & { id?: string; created_at?: string }
 ): SwapTrade {

@@ -93,7 +93,7 @@ export async function ensureKafkaTopics(): Promise<void> {
     const replicaIds = await brokerIds(admin);
     const replicationFactor = Math.max(1, replicaIds.length);
 
-    console.log(`Brokers: [${replicaIds.join(",")}] — using RF=${replicationFactor}`);
+    console.log(`brokers [${replicaIds.join(",")}] rf=${replicationFactor}`);
 
     await ensureTopic(admin, kafkaConfig.topic, replicationFactor);
     await ensureTopic(admin, kafkaConfig.acceleratedTopic, replicationFactor);
@@ -106,7 +106,7 @@ const isCli = (process.argv[1] ?? "").includes("createKafkaTopic");
 
 if (isCli) {
   if (!isKafkaConfigured || !kafkaConfig) {
-    console.error("KAFKA_BROKERS is not set — nothing to do.");
+    console.error("KAFKA_BROKERS is not set");
     process.exit(1);
   }
 

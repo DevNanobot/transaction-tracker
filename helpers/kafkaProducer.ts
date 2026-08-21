@@ -5,7 +5,7 @@ import {
   type SwapAcceleratedEvent,
   type SwapEvent,
 } from "../models/TradeEvent.js";
-import { logger } from "./logger.js";
+import { errorMessage, logger } from "./logger.js";
 
 let producer: Producer | null = null;
 let connected = false;
@@ -23,7 +23,6 @@ function getKafka(): Kafka {
 
 export async function connectKafkaProducer(): Promise<void> {
   if (!isKafkaConfigured || !kafkaConfig) {
-    logger.info("Kafka disabled — omit KAFKA_BROKERS or leave it empty to run without Kafka");
     return;
   }
 
@@ -35,46 +34,35 @@ export async function connectKafkaProducer(): Promise<void> {
     producer = getKafka().producer();
     await producer.connect();
     connected = true;
-    logger.info("Kafka producer connected", {
+    logger.info("kafka connected", {
       brokers: kafkaConfig.brokers,
       topic: kafkaConfig.topic,
-      acceleratedTopic: kafkaConfig.acceleratedTopic,
     });
   } catch (error) {
     producer = null;
     connected = false;
-    logger.warn("Kafka connection failed — continuing without Kafka", {
-      brokers: kafkaConfig.brokers,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn("kafka unavailable", { error: errorMessage(error) });
   }
 }
 
 export async function disconnectKafkaProducer(): Promise<void> {
-  if (producer && connected) {
-    await producer.disconnect();
-    connected = false;
-    producer = null;
-    logger.info("Kafka producer disconnected");
+  if (!producer || !connected) {
+    return;
   }
+
+  await producer.disconnect();
+  connected = false;
+  producer = null;
 }
 
-export async function publishSwapEvent(
-  key: string,
-  message: SwapEvent
-): Promise<void> {
-  if (!isKafkaConfigured || !producer || !connected || !kafkaConfig) {
+export async function publishSwapEvent(key: string, message: SwapEvent): Promise<void> {
+  if (!producer || !connected || !kafkaConfig) {
     return;
   }
 
   await producer.send({
     topic: kafkaConfig.topic,
-    messages: [
-      {
-        key,
-        value: JSON.stringify(message),
-      },
-    ],
+    messages: [{ key, value: JSON.stringify(message) }],
   });
 }
 
@@ -82,10 +70,8 @@ export async function publishAcceleratedSwapEvents(
   event: SwapEvent,
   onEach?: (copy: SwapAcceleratedEvent) => void
 ): Promise<void> {
-  const copies = toAcceleratedSwapEvents(event);
-
-  for (const copy of copies) {
-    if (isKafkaConfigured && producer && connected && kafkaConfig) {
+  for (const copy of toAcceleratedSwapEvents(event)) {
+    if (producer && connected && kafkaConfig) {
       await producer.send({
         topic: kafkaConfig.acceleratedTopic,
         messages: [
@@ -96,7 +82,6 @@ export async function publishAcceleratedSwapEvents(
         ],
       });
     }
-
     onEach?.(copy);
   }
 }

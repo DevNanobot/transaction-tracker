@@ -6,9 +6,7 @@ One **Confluent Kafka broker** + **Node app** on the same machine. Kafka is **no
 
 - Hetzner Cloud VPS (2 GB RAM minimum recommended; Kafka heap capped at 512 MB)
 - Docker + Docker Compose v2
-- Supabase project with migrations applied:
-  - [`scripts/migrateSupabase.sql`](../scripts/migrateSupabase.sql)
-  - [`scripts/migrateSupabaseAccelerated.sql`](../scripts/migrateSupabaseAccelerated.sql) (if using accelerated swaps)
+- Supabase project with `scripts/migrateSupabase.sql` applied
 
 ## 1. Server setup
 
@@ -38,7 +36,7 @@ Required in `.env`:
 | `CORS_ORIGIN` | Your frontend URL, e.g. `https://api.example.com` |
 | `PORT` | `3000` |
 
-Do **not** set `KAFKA_BROKERS` in `.env` — `docker-compose.prod.yml` sets `kafka:29092` for the app container.
+Do **not** set `KAFKA_BROKERS` in `.env`. `docker-compose.prod.yml` sets `kafka:29092` for the app container.
 
 ## 3. Start production stack
 
@@ -54,7 +52,7 @@ curl -sS http://127.0.0.1:3000/
 curl -sS http://127.0.0.1:3000/health
 ```
 
-You should see `App is live` in both the logs and the `/` HTML. If `curl` fails, the container is not listening — check logs for `CORS_ORIGIN` / Supabase boot errors.
+You should see the app listening in the logs. If `curl` fails, check `CORS_ORIGIN` / Supabase errors.
 
 ## 4. Reverse proxy (Caddy) for `api.YOURDOMAIN.com`
 
@@ -115,7 +113,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 | HA | Broker down = Kafka down | Survives 1 node loss |
 | Replication | RF=1 (no copy) | RF=3 |
 
-Acceptable for a cost-conscious Hetzner deployment; Supabase remains the durable store for swaps.
+Acceptable on a small VPS. Swaps still land in Supabase if Kafka is down.
 
 ## Local development
 

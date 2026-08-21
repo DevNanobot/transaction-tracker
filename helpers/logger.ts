@@ -1,5 +1,9 @@
 type LogLevel = "info" | "warn" | "error" | "debug";
 
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function formatMessage(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
   const entry = {
     level,
