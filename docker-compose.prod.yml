@@ -1,20 +1,20 @@
-# Local development — single Confluent Kafka broker (KRaft, RF=1).
-# Production stack: docker compose -f docker-compose.prod.yml up -d --build
+# Hetzner / VPS production — app + single Kafka broker on one machine.
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+#
+# Put secrets in .env (never commit). Bind ports to localhost; put Caddy/Nginx in front.
 
 services:
   kafka:
     image: confluentinc/cp-kafka:8.3.1
     container_name: transaction-tracker-kafka
     hostname: kafka
-    ports:
-      - "127.0.0.1:9092:9092"
     environment:
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,INTERNAL://kafka:29092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_LOG_DIRS: /var/lib/kafka/data
@@ -25,6 +25,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
     volumes:
       - kafka-data:/var/lib/kafka/data
     restart: unless-stopped
@@ -36,24 +37,38 @@ services:
           "--bootstrap-server",
           "localhost:9092",
         ]
-      interval: 10s
+      interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  kafka-ui:
-    profiles: ["ui"]
-    image: ghcr.io/kafbat/kafka-ui:latest
-    container_name: transaction-tracker-kafka-ui
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transaction-tracker-app
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      KAFKA_BROKERS: kafka:29092
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${PORT:-3000}:3000"
     depends_on:
       kafka:
         condition: service_healthy
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      DYNAMIC_CONFIG_ENABLED: "true"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   kafka-data:

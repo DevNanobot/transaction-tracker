@@ -5,6 +5,9 @@ dotenv.config();
 
 const envSchema = z
   .object({
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
     ALCHEMY_KEY: z.string().min(1).transform((v) => v.trim()),
     UNIVERSAL_ROUTER: z
       .string()
@@ -39,12 +42,25 @@ const envSchema = z
 
     const apiKey = data.API_KEY?.trim() || undefined;
 
+    if (data.NODE_ENV === "production" && !apiKey) {
+      throw new Error(
+        "Invalid environment configuration:\n  API_KEY: Required when NODE_ENV=production"
+      );
+    }
+
+    if (data.NODE_ENV === "production" && data.CORS_ORIGIN === "*") {
+      throw new Error(
+        "Invalid environment configuration:\n  CORS_ORIGIN: Set explicit frontend origin(s) in production (not *)"
+      );
+    }
+
     return {
       ...data,
       supabaseSecretKey,
       kafkaEnabled: kafkaBrokers.length > 0,
       kafkaBrokers,
       apiKey,
+      isProduction: data.NODE_ENV === "production",
     };
   });
 

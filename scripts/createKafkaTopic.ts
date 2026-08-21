@@ -2,20 +2,12 @@ import { Kafka, type Admin } from "kafkajs";
 import { isKafkaConfigured, kafkaConfig } from "../config/kafka.js";
 
 const NUM_PARTITIONS = 2;
-const BASE_REPLICATION_FACTOR = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function describeTopic(
-  admin: Admin,
-  topic: string
-): Promise<{
-  partitionCount: number;
-  replicationFactor: number;
-  replicaSets: number[][];
-}> {
+async function describeTopic(admin: Admin, topic: string): Promise<void> {
   const metadata = await admin.fetchTopicMetadata({ topics: [topic] });
   const topicMeta = metadata.topics.find((entry) => entry.name === topic);
 
@@ -34,15 +26,9 @@ async function describeTopic(
 
   for (const partition of partitions) {
     console.log(
-      `  partition ${partition.partitionId} leader=${partition.leader} replicas=[${partition.replicas.join(",")}] isr=[${partition.isr.join(",")}]`
+      `  partition ${partition.partitionId} leader=${partition.leader} replicas=[${partition.replicas.join(",")}]`
     );
   }
-
-  return {
-    partitionCount: partitions.length,
-    replicationFactor,
-    replicaSets: partitions.map((partition) => [...partition.replicas]),
-  };
 }
 
 async function brokerIds(admin: Admin): Promise<number[]> {
@@ -50,54 +36,9 @@ async function brokerIds(admin: Admin): Promise<number[]> {
   return cluster.brokers.map((broker) => broker.nodeId).sort((a, b) => a - b);
 }
 
-function sameReplicas(current: number[][], target: number[]): boolean {
-  return current.every((replicas) => {
-    if (replicas.length !== target.length) {
-      return false;
-    }
-
-    const sorted = [...replicas].sort((a, b) => a - b);
-    return sorted.every((id, index) => id === target[index]);
-  });
-}
-
-async function expandReplicas(
-  admin: Admin,
-  topic: string,
-  partitionCount: number,
-  replicaIds: number[]
-): Promise<void> {
-  console.log(
-    `Adding replicas on brokers [${replicaIds.join(",")}] without deleting ${topic}`
-  );
-
-  await admin.alterPartitionReassignments({
-    topics: [
-      {
-        topic,
-        partitionAssignment: Array.from({ length: partitionCount }, (_, partition) => ({
-          partition,
-          replicas: replicaIds,
-        })),
-      },
-    ],
-  });
-
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const layout = await describeTopic(admin, topic);
-    if (sameReplicas(layout.replicaSets, replicaIds)) {
-      return;
-    }
-    await sleep(500);
-  }
-
-  console.warn("Replica reassignment is still running; check kafka:describe in a moment.");
-}
-
 async function ensureTopic(
   admin: Admin,
   topic: string,
-  replicaIds: number[],
   replicationFactor: number
 ): Promise<void> {
   const existingTopics = await admin.listTopics();
@@ -112,26 +53,13 @@ async function ensureTopic(
         },
       ],
     });
-    console.log(`Created topic: ${topic}`);
-    await describeTopic(admin, topic);
-    return;
-  }
-
-  const layout = await describeTopic(admin, topic);
-
-  if (layout.partitionCount !== NUM_PARTITIONS) {
-    console.warn(
-      `Topic ${topic} has ${layout.partitionCount} partitions (wanted ${NUM_PARTITIONS}). Not deleting it.`
-    );
-  }
-
-  if (replicaIds.length >= 3 && !sameReplicas(layout.replicaSets, replicaIds)) {
-    await expandReplicas(admin, topic, layout.partitionCount, replicaIds);
+    console.log(`Created topic: ${topic} (partitions=${NUM_PARTITIONS}, RF=${replicationFactor})`);
     await describeTopic(admin, topic);
     return;
   }
 
   console.log(`Topic already exists: ${topic}`);
+  await describeTopic(admin, topic);
 }
 
 async function createTopics(): Promise<void> {
@@ -150,19 +78,26 @@ async function createTopics(): Promise<void> {
   try {
     await admin.connect();
 
-    const replicaIds = await brokerIds(admin);
-    const replicationFactor = Math.max(
-      BASE_REPLICATION_FACTOR,
-      Math.min(3, replicaIds.length)
-    );
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        await brokerIds(admin);
+        break;
+      } catch (error) {
+        if (attempt === 29) {
+          throw error;
+        }
+        console.log("Waiting for Kafka broker...");
+        await sleep(2000);
+      }
+    }
 
-    await ensureTopic(admin, kafkaConfig.topic, replicaIds, replicationFactor);
-    await ensureTopic(
-      admin,
-      kafkaConfig.acceleratedTopic,
-      replicaIds,
-      replicationFactor
-    );
+    const replicaIds = await brokerIds(admin);
+    const replicationFactor = Math.max(1, replicaIds.length);
+
+    console.log(`Brokers: [${replicaIds.join(",")}] — using RF=${replicationFactor}`);
+
+    await ensureTopic(admin, kafkaConfig.topic, replicationFactor);
+    await ensureTopic(admin, kafkaConfig.acceleratedTopic, replicationFactor);
   } finally {
     await admin.disconnect();
   }

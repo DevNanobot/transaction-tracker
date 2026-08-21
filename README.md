@@ -51,44 +51,40 @@ cp .env.example .env
 | `UNIVERSAL_ROUTER` | Universal Router on Robinhood Chain (`0x8876789976dEcBfCbBbe364623C63652db8C0904`) |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SECRET_KEY` | Supabase **secret** key (`sb_secret_...`) for server-side writes |
-| `KAFKA_BROKERS` | Optional — comma-separated brokers. Omit to run without Kafka. Use `localhost:9092,localhost:9094,localhost:9096` with the local Docker cluster. |
+| `KAFKA_BROKERS` | Optional — use `localhost:9092` with local Docker (single broker). Omit to run without Kafka. |
+
+Production on Hetzner: see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 | `PORT` | HTTP port (default: `3000`) |
 
 4. Run the Supabase migration — paste [`scripts/migrateSupabase.sql`](scripts/migrateSupabase.sql) into the Supabase SQL editor.
 
    If `swaps` already exists, run only the additive load-test table: [`scripts/migrateSupabaseAccelerated.sql`](scripts/migrateSupabaseAccelerated.sql). Do **not** re-run the full migration (it drops `swaps`).
 
-5. *(Optional)* Start local Kafka and create the topic:
+5. *(Optional)* Start local Kafka and create topics:
 
 ```bash
 npm run kafka:setup
 ```
 
-This starts three Kafka brokers via [`docker-compose.yml`](docker-compose.yml) (`localhost:9092`, `9094`, `9096`), each a controller voter, and creates `swap` and `swap-accelerated` with RF=3.
-
-The first time you switch to this 3-voter quorum, Kafka disks must be recreated (old single-voter metadata cannot elect a replacement for `kafka1`). This deletes **Kafka volumes only**, not Supabase:
-
-```bash
-npm run kafka:reset
-npm run kafka:setup
-```
+Single `confluentinc/cp-kafka` broker on `localhost:9092` (RF=1). Optional UI: `npm run kafka:ui` → http://127.0.0.1:8080
 
 ### Kafka commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run kafka:up` | Start all three brokers, Kafka UI, and wait until broker healthchecks pass |
-| `npm run kafka:down` | Stop brokers and UI (keeps volumes) |
-| `npm run kafka:reset` | Stop brokers and **delete** Kafka volumes |
-| `npm run kafka:logs` | Tail logs from `kafka1`, `kafka2`, and `kafka3` |
-| `npm run create-topic` | Create `swap` and `swap-accelerated` with 2 partitions and RF=3 |
-| `npm run kafka:describe` | Show partition leaders and replicas for `swap` and `swap-accelerated` |
+| `npm run kafka:up` | Start Kafka broker |
+| `npm run kafka:down` | Stop Kafka |
+| `npm run kafka:reset` | Stop and **delete** Kafka volume |
+| `npm run kafka:setup` | Start broker + create `swap` / `swap-accelerated` topics |
+| `npm run kafka:describe` | Show partition layout |
+| `npm run prod:up` | **Production** — build app + Kafka on Hetzner (`docker-compose.prod.yml`) |
 
 ## Run
 
 ```bash
-npm run dev    # development with hot reload
-npm start      # production
+npm run dev          # development with hot reload
+npm run build && npm start   # local production build
+npm run prod:up      # Docker production stack (see docs/DEPLOY.md)
 ```
 
 ## API
@@ -139,37 +135,11 @@ source.onmessage = (event) => {
 
 ## Kafka
 
-Local Docker Compose runs **three brokers**, each **broker + controller** (voters 1, 2, 3), and [Kafbat UI](https://github.com/kafbat/kafka-ui):
+Local Docker runs **one broker** (`localhost:9092`, RF=1). Production uses the same single-broker layout to save RAM on Hetzner — see [docs/DEPLOY.md](docs/DEPLOY.md).
 
-- `kafka1` — `localhost:9092`
-- `kafka2` — `localhost:9094`
-- `kafka3` — `localhost:9096`
-- `kafka-ui` — web UI at [http://localhost:8080](http://localhost:8080)
+Topics: `swap`, `swap-accelerated` (2 partitions each).
 
-Majority is **2 of 3**. Stopping any **one** broker (including `kafka1`) lets the other two elect a controller and move partition leaders. `swap` is RF=3 with `min.insync.replicas=2`, so writes continue with one broker down. Stopping two brokers loses quorum.
-
-Confirm replica placement:
-
-```bash
-npm run kafka:describe
-```
-
-Expect replicas `1,2,3` and one leader per partition. If `kafka1` is the node you stopped, describe from another broker:
-
-```bash
-docker compose exec kafka2 kafka-topics --bootstrap-server localhost:9092 --describe --topic swap
-```
-
-Or open **http://localhost:8080** after `npm run kafka:up`. Use **Brokers** to see which node is controller and how partitions are assigned, **Topics → swap** for partition leaders/replicas, **Consumer Groups** for lag, and **Messages** to browse events by partition.
-
-Every live swap is published to topic `swap`. Then **10 separate produce calls** push the same payload to `swap-accelerated` (nonce 1 then 2 … 10, identical timestamps, keys `${txHash}-${logIndex}-${nonce}`). They are not batched into one Kafka request:
-
-| Event type | Stored in Supabase | Kafka topic | SSE |
-|------------|-------------------|-------------|-----|
-| `swap` | `swaps` | `swap` | Yes |
-| `swap-accelerated` | `swaps_accelerated` | `swap-accelerated` | Yes |
-
-Read live from Kafka in a second terminal (`swap` only):
+Read live from Kafka:
 
 ```bash
 npm run kafka:consume

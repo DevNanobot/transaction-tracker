@@ -13,6 +13,7 @@ import {
 import { createRoutes } from "./routes/index.js";
 import { logger } from "./helpers/logger.js";
 import { flushPendingSwaps } from "./controllers/tradeController.js";
+import { pingSupabase } from "./helpers/supabaseClient.js";
 
 const app = express();
 
@@ -25,6 +26,15 @@ let alchemyWs: AlchemyWebSocket;
 let server: ReturnType<typeof app.listen>;
 
 async function bootstrap(): Promise<void> {
+  if (env.isProduction) {
+    const supabaseOk = await pingSupabase();
+    if (!supabaseOk) {
+      throw new Error(
+        "Supabase is unreachable or the swaps tables are missing — run scripts/migrateSupabase.sql"
+      );
+    }
+  }
+
   await connectKafkaProducer();
 
   alchemyWs = new AlchemyWebSocket();
@@ -34,10 +44,12 @@ async function bootstrap(): Promise<void> {
 
   server = app.listen(env.PORT, env.HOST, () => {
     logger.info("Server started", {
+      nodeEnv: env.NODE_ENV,
       host: env.HOST,
       port: env.PORT,
       corsOrigin: env.CORS_ORIGIN,
       apiKeyRequired: Boolean(env.apiKey),
+      kafkaEnabled: env.kafkaEnabled,
     });
   });
 

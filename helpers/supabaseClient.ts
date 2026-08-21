@@ -125,8 +125,11 @@ export async function countAcceleratedSwaps(): Promise<number> {
 export async function pingSupabase(): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from("swaps").select("id").limit(1);
-    return !error;
+    const [swaps, accelerated] = await Promise.all([
+      supabase.from("swaps").select("id").limit(1),
+      supabase.from("swaps_accelerated").select("id").limit(1),
+    ]);
+    return !swaps.error && !accelerated.error;
   } catch {
     return false;
   }
