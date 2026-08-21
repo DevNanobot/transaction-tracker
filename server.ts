@@ -5,39 +5,47 @@ import {
   connectKafkaProducer,
   disconnectKafkaProducer,
 } from "./helpers/kafkaProducer.js";
-import {
-  apiKeyMiddleware,
-  corsMiddleware,
-  rateLimitMiddleware,
-} from "./helpers/httpSecurity.js";
+import { corsMiddleware, rateLimitMiddleware } from "./helpers/httpSecurity.js";
 import { createRoutes } from "./routes/index.js";
 import { logger } from "./helpers/logger.js";
 import { flushPendingSwaps } from "./controllers/tradeController.js";
 import { pingSupabase } from "./helpers/supabaseClient.js";
+import { ensureKafkaTopics } from "./scripts/createKafkaTopic.js";
 
 const app = express();
 
 app.use(corsMiddleware);
 app.use(rateLimitMiddleware);
-app.use(apiKeyMiddleware);
 app.use(express.json({ limit: "16kb" }));
 
 let alchemyWs: AlchemyWebSocket;
 let server: ReturnType<typeof app.listen>;
 
 function publicAppUrl(host: string, port: number): string {
-  const visitHost = host === "0.0.0.0" || host === "::" ? "localhost" : host;
-  return `http://${visitHost}:${port}`;
+  if (host === "0.0.0.0" || host === "::") {
+    return `http://0.0.0.0:${port} (use http://YOUR_SERVER_IP:${port})`;
+  }
+
+  return `http://${host}:${port}`;
 }
 
 async function bootstrap(): Promise<void> {
   if (env.isProduction) {
     const supabaseOk = await pingSupabase();
     if (!supabaseOk) {
-      throw new Error(
-        "Supabase is unreachable or the swaps tables are missing — run scripts/migrateSupabase.sql"
+      console.error(
+        "Supabase check failed — run scripts/migrateSupabase.sql in Supabase. Continuing anyway."
       );
     }
+  }
+
+  try {
+    await ensureKafkaTopics();
+  } catch (error) {
+    console.error(
+      "Kafka topic setup failed:",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 
   await connectKafkaProducer();
@@ -58,7 +66,6 @@ async function bootstrap(): Promise<void> {
       port: env.PORT,
       url: appUrl,
       corsOrigin: env.CORS_ORIGIN,
-      apiKeyRequired: Boolean(env.apiKey),
       kafkaEnabled: env.kafkaEnabled,
     });
   });
@@ -103,8 +110,11 @@ function setupGracefulShutdown(): void {
 }
 
 bootstrap().catch((error) => {
-  logger.error("Failed to start server", {
-    error: error instanceof Error ? error.message : String(error),
-  });
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("Failed to start server:", message);
+  if (error instanceof Error && error.stack) {
+    console.error(error.stack);
+  }
+  logger.error("Failed to start server", { error: message });
   process.exit(1);
 });

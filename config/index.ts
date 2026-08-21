@@ -3,26 +3,36 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+function stripEnv(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().replace(/^["']|["']$/g, "");
+}
+
 const envSchema = z
   .object({
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
-    ALCHEMY_KEY: z.string().min(1).transform((v) => v.trim()),
-    UNIVERSAL_ROUTER: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((v) => v as `0x${string}`),
-    SUPABASE_URL: z.string().url(),
-    SUPABASE_SECRET_KEY: z.string().min(1).optional(),
-    SUPABASE_KEY: z.string().min(1).optional(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-    KAFKA_BROKERS: z.string().optional(),
+    ALCHEMY_KEY: z.preprocess(stripEnv, z.string().min(1)),
+    UNIVERSAL_ROUTER: z.preprocess(
+      stripEnv,
+      z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{40}$/)
+        .transform((v) => v as `0x${string}`)
+    ),
+    SUPABASE_URL: z.preprocess(stripEnv, z.string().url()),
+    SUPABASE_SECRET_KEY: z.preprocess(stripEnv, z.string().min(1)).optional(),
+    SUPABASE_KEY: z.preprocess(stripEnv, z.string().min(1)).optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.preprocess(stripEnv, z.string().min(1)).optional(),
+    KAFKA_BROKERS: z.preprocess(stripEnv, z.string()).optional(),
     KAFKA_CLIENT_ID: z.string().min(1).default("transaction-tracker"),
     HOST: z.string().min(1).default("127.0.0.1"),
     PORT: z.coerce.number().int().positive().default(3000),
     CORS_ORIGIN: z.string().min(1).default("*"),
-    API_KEY: z.string().optional(),
   })
   .transform((data) => {
     const supabaseSecretKey =
@@ -40,31 +50,28 @@ const envSchema = z
       ? data.KAFKA_BROKERS.split(",").map((b) => b.trim()).filter(Boolean)
       : [];
 
-    const apiKey = data.API_KEY?.trim() || undefined;
-
-    if (data.NODE_ENV === "production" && !apiKey) {
-      throw new Error(
-        "Invalid environment configuration:\n  API_KEY: Required when NODE_ENV=production"
-      );
-    }
-
-    if (data.NODE_ENV === "production" && data.CORS_ORIGIN === "*") {
-      throw new Error(
-        "Invalid environment configuration:\n  CORS_ORIGIN: Set explicit frontend origin(s) in production (not *)"
-      );
-    }
-
     return {
       ...data,
+      HOST: listenHost(data.NODE_ENV, data.HOST),
       supabaseSecretKey,
       kafkaEnabled: kafkaBrokers.length > 0,
       kafkaBrokers,
-      apiKey,
       isProduction: data.NODE_ENV === "production",
     };
   });
 
 export type Env = z.infer<typeof envSchema>;
+
+function listenHost(nodeEnv: string, host: string): string {
+  if (
+    nodeEnv === "production" &&
+    (host === "127.0.0.1" || host === "localhost")
+  ) {
+    return "0.0.0.0";
+  }
+
+  return host;
+}
 
 function loadEnv(): Env {
   const result = envSchema.safeParse(process.env);

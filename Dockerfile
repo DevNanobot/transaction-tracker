@@ -28,11 +28,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 USER app
 
 EXPOSE 3000
 
-ENTRYPOINT ["/entrypoint.sh"]
+CMD ["node", "dist/server.js"]

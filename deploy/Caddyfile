@@ -1,6 +1,10 @@
-# Copy to /etc/caddy/Caddyfile and replace the hostname.
-# DNS A record for this host must point at the droplet before reload.
+# Replace YOURDOMAIN.com with your real domain (the part after api.).
+# DNS: A record `api` → droplet IPv4. Ports 80 and 443 must be open.
 
-api.example.com {
-	reverse_proxy 127.0.0.1:3000
+api.YOURDOMAIN.com {
+	encode gzip
+
+	reverse_proxy 127.0.0.1:3000 {
+		flush_interval -1
+	}
 }

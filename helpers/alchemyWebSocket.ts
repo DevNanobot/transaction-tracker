@@ -8,7 +8,10 @@ import { logger } from './logger.js'
 export class AlchemyWebSocket {
   private readonly client = createPublicClient({
     chain: robinhoodChain,
-    transport: webSocket(alchemyConfig.wssUrl),
+    transport: webSocket(alchemyConfig.wssUrl, {
+      retryCount: 10,
+      retryDelay: 1_000,
+    }),
   })
 
   private unwatch: (() => void) | undefined
@@ -24,8 +27,15 @@ export class AlchemyWebSocket {
           return
         }
 
+        const blockNumber = block?.number
+
+        if (blockNumber === undefined || blockNumber === null) {
+          logger.warn('Ignored block subscription event without a number')
+          return
+        }
+
         this.inflight += 1
-        void this.handleBlock(block.number).finally(() => {
+        void this.handleBlock(blockNumber).finally(() => {
           this.inflight -= 1
           if (this.inflight === 0) {
             for (const resolve of this.idleWaiters) {

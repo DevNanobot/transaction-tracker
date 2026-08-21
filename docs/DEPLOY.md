@@ -35,8 +35,7 @@ Required in `.env`:
 | `NODE_ENV` | `production` |
 | `ALCHEMY_KEY` | Alchemy key |
 | `SUPABASE_URL` / `SUPABASE_SECRET_KEY` | Supabase credentials |
-| `API_KEY` | Long random secret (required) |
-| `CORS_ORIGIN` | Your frontend URL, e.g. `https://app.example.com` |
+| `CORS_ORIGIN` | Your frontend URL, e.g. `https://api.example.com` |
 | `PORT` | `3000` |
 
 Do **not** set `KAFKA_BROKERS` in `.env` — `docker-compose.prod.yml` sets `kafka:29092` for the app container.
@@ -55,25 +54,51 @@ curl -sS http://127.0.0.1:3000/
 curl -sS http://127.0.0.1:3000/health
 ```
 
-You should see `App is live` in both the logs and the `/` HTML. If `curl` fails, the container is not listening — check logs for `API_KEY` / `CORS_ORIGIN` / Supabase boot errors.
+You should see `App is live` in both the logs and the `/` HTML. If `curl` fails, the container is not listening — check logs for `CORS_ORIGIN` / Supabase boot errors.
 
-## 4. Reverse proxy (Caddy)
+## 4. Reverse proxy (Caddy) for `api.YOURDOMAIN.com`
 
-Use [`deploy/Caddyfile`](../deploy/Caddyfile). Example for `api.example.com`:
+DNS: cPanel **Zone Editor** → A record `api` → droplet IPv4. Check with `nslookup api.YOURDOMAIN.com` (must return the Hetzner IP).
 
-```
-api.example.com {
-  reverse_proxy 127.0.0.1:3000
-}
-```
+Open **80** and **443** in `ufw` and in the Hetzner Cloud Firewall (Let's Encrypt needs both).
 
 ```bash
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo nano /etc/caddy/Caddyfile   # set your real hostname
-sudo systemctl reload caddy
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw reload
+
+apt install -y caddy   # skip if already installed
+
+cat > /etc/caddy/Caddyfile <<'EOF'
+api.YOURDOMAIN.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000 {
+		flush_interval -1
+	}
+}
+EOF
+
+# edit YOURDOMAIN.com to the real domain, then:
+caddy validate --config /etc/caddy/Caddyfile
+systemctl enable --now caddy
+systemctl reload caddy
+curl -sSI https://api.YOURDOMAIN.com/
+curl -sS https://api.YOURDOMAIN.com/health
 ```
 
-Then open `https://api.example.com/` in the browser. Opening `http://DROPLET_IP:3000` from your laptop will **not** work: that port is bound to `127.0.0.1` only.
+Caddy will get a Let's Encrypt certificate automatically. In the app `.env` set:
+
+```
+CORS_ORIGIN=https://api.YOURDOMAIN.com
+```
+
+Then recreate the app container so it picks up CORS:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+After HTTPS works, you can close public **3000** in the Hetzner firewall (Caddy talks to `127.0.0.1:3000` on the box).
 
 ## 5. Updates
 

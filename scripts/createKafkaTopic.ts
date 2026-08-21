@@ -62,10 +62,9 @@ async function ensureTopic(
   await describeTopic(admin, topic);
 }
 
-async function createTopics(): Promise<void> {
+export async function ensureKafkaTopics(): Promise<void> {
   if (!isKafkaConfigured || !kafkaConfig) {
-    console.error("KAFKA_BROKERS is not set — nothing to do.");
-    process.exit(1);
+    return;
   }
 
   const kafka = new Kafka({
@@ -103,7 +102,16 @@ async function createTopics(): Promise<void> {
   }
 }
 
-createTopics().catch((error) => {
-  console.error("Failed to create Kafka topic:", error);
-  process.exit(1);
-});
+const isCli = (process.argv[1] ?? "").includes("createKafkaTopic");
+
+if (isCli) {
+  if (!isKafkaConfigured || !kafkaConfig) {
+    console.error("KAFKA_BROKERS is not set — nothing to do.");
+    process.exit(1);
+  }
+
+  ensureKafkaTopics().catch((error) => {
+    console.error("Failed to create Kafka topic:", error);
+    process.exit(1);
+  });
+}

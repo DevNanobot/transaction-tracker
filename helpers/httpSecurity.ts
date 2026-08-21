@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/index.js";
 
@@ -10,18 +9,6 @@ const rateLimitHits = new Map<string, { count: number; resetAt: number }>();
 
 function clientKey(req: Request): string {
   return req.socket.remoteAddress ?? "unknown";
-}
-
-function secretsEqual(presented: string, expected: string): boolean {
-  const presentedBuf = Buffer.from(presented);
-  const expectedBuf = Buffer.from(expected);
-
-  if (presentedBuf.length !== expectedBuf.length) {
-    timingSafeEqual(expectedBuf, expectedBuf);
-    return false;
-  }
-
-  return timingSafeEqual(presentedBuf, expectedBuf);
 }
 
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
@@ -41,7 +28,7 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction):
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-API-Key"
+    "Content-Type, Authorization"
   );
 
   if (req.method === "OPTIONS") {
@@ -78,35 +65,6 @@ export function rateLimitMiddleware(
 
   if (bucket.count > RATE_LIMIT_MAX) {
     res.status(429).json({ error: "Too many requests" });
-    return;
-  }
-
-  next();
-}
-
-export function apiKeyMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  if (!env.apiKey || req.path === "/health" || req.path === "/") {
-    next();
-    return;
-  }
-
-  const headerKey = req.header("x-api-key");
-  const bearer = req.header("authorization");
-  const bearerKey = bearer?.toLowerCase().startsWith("bearer ")
-    ? bearer.slice(7).trim()
-    : undefined;
-  const queryKey =
-    req.path === "/trades/stream" && typeof req.query.apiKey === "string"
-      ? req.query.apiKey
-      : undefined;
-  const presented = headerKey?.trim() || bearerKey || queryKey?.trim();
-
-  if (!presented || !secretsEqual(presented, env.apiKey)) {
-    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
