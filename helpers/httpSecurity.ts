@@ -89,7 +89,7 @@ export function apiKeyMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  if (!env.apiKey || req.path === "/health") {
+  if (!env.apiKey || req.path === "/health" || req.path === "/") {
     next();
     return;
   }

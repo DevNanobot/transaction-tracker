@@ -1,0 +1,6 @@
+# Copy to /etc/caddy/Caddyfile and replace the hostname.
+# DNS A record for this host must point at the droplet before reload.
+
+api.example.com {
+	reverse_proxy 127.0.0.1:3000
+}

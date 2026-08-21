@@ -57,9 +57,10 @@ services:
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
+      PORT: "3000"
       KAFKA_BROKERS: kafka:29092
     ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       kafka:
         condition: service_healthy

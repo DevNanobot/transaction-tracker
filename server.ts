@@ -25,6 +25,11 @@ app.use(express.json({ limit: "16kb" }));
 let alchemyWs: AlchemyWebSocket;
 let server: ReturnType<typeof app.listen>;
 
+function publicAppUrl(host: string, port: number): string {
+  const visitHost = host === "0.0.0.0" || host === "::" ? "localhost" : host;
+  return `http://${visitHost}:${port}`;
+}
+
 async function bootstrap(): Promise<void> {
   if (env.isProduction) {
     const supabaseOk = await pingSupabase();
@@ -42,11 +47,16 @@ async function bootstrap(): Promise<void> {
 
   app.use(createRoutes(alchemyWs));
 
+  const appUrl = publicAppUrl(env.HOST, env.PORT);
+
   server = app.listen(env.PORT, env.HOST, () => {
-    logger.info("Server started", {
+    const liveMessage = `App is live on ${appUrl}`;
+    console.log(liveMessage);
+    logger.info(liveMessage, {
       nodeEnv: env.NODE_ENV,
       host: env.HOST,
       port: env.PORT,
+      url: appUrl,
       corsOrigin: env.CORS_ORIGIN,
       apiKeyRequired: Boolean(env.apiKey),
       kafkaEnabled: env.kafkaEnabled,

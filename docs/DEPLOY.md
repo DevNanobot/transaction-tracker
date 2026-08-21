@@ -47,21 +47,19 @@ Do **not** set `KAFKA_BROKERS` in `.env` — `docker-compose.prod.yml` sets `kaf
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-This starts:
-
-- **kafka** — single `confluentinc/cp-kafka:8.3.1` broker, RF=1, 168h log retention
-- **app** — compiled Node.js, topics auto-created on boot, API on `127.0.0.1:3000`
-
-Check logs:
+The API is only on **localhost:3000** (not the public IP). Compose always sets `PORT=3000` inside the container.
 
 ```bash
-npm run prod:logs
-curl -s http://127.0.0.1:3000/health | jq
+docker compose -f docker-compose.prod.yml logs app --tail=50
+curl -sS http://127.0.0.1:3000/
+curl -sS http://127.0.0.1:3000/health
 ```
 
-## 4. Reverse proxy (Caddy example)
+You should see `App is live` in both the logs and the `/` HTML. If `curl` fails, the container is not listening — check logs for `API_KEY` / `CORS_ORIGIN` / Supabase boot errors.
 
-Install Caddy on the host and proxy to the app:
+## 4. Reverse proxy (Caddy)
+
+Use [`deploy/Caddyfile`](../deploy/Caddyfile). Example for `api.example.com`:
 
 ```
 api.example.com {
@@ -69,11 +67,13 @@ api.example.com {
 }
 ```
 
-Frontend calls:
+```bash
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudo nano /etc/caddy/Caddyfile   # set your real hostname
+sudo systemctl reload caddy
+```
 
-- `GET https://api.example.com/health`
-- `GET https://api.example.com/trades?limit=50` with header `X-API-Key: <API_KEY>`
-- `GET https://api.example.com/trades/stream?apiKey=<API_KEY>` (SSE)
+Then open `https://api.example.com/` in the browser. Opening `http://DROPLET_IP:3000` from your laptop will **not** work: that port is bound to `127.0.0.1` only.
 
 ## 5. Updates
 
